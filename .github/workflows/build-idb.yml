@@ -5,7 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
 
 jobs:
   build:
@@ -56,7 +56,7 @@ jobs:
       
       - name: Create embedded entry point script
         run: |
-          cat > idb_main_embedded.py << 'ENDOFFILE'
+          cat > idb_main_embedded.py << 'EOFPYTHON'
           #!/usr/bin/env python3
           """
           Standalone IDB entry point with embedded migrations code
@@ -105,12 +105,12 @@ jobs:
           except Exception as e:
               print(f"Error running IDB: {e}", file=sys.stderr)
               sys.exit(1)
-          ENDOFFILE
+          EOFPYTHON
           chmod +x idb_main_embedded.py
       
       - name: Create PyInstaller spec file
         run: |
-          cat > idb_standalone_embedded_onedir.spec << 'ENDOFFILE'
+          cat > idb_standalone_embedded_onedir.spec << 'EOFSPEC'
           # -*- mode: python ; coding: utf-8 -*-
           import os
           import sys
@@ -189,7 +189,6 @@ jobs:
 
           pyz = PYZ(a.pure, a.zipped_data, cipher=None)
 
-          # ONE-DIRECTORY MODE: Create separate exe and collect steps
           exe = EXE(
               pyz,
               a.scripts,
@@ -207,7 +206,6 @@ jobs:
               entitlements_file=None,
           )
 
-          # COLLECT: Gather all files into a directory
           coll = COLLECT(
               exe,
               a.binaries,
@@ -218,7 +216,7 @@ jobs:
               upx_exclude=[],
               name='idb_embedded',
           )
-          ENDOFFILE
+          EOFSPEC
       
       - name: Build binary with PyInstaller
         env:
@@ -255,19 +253,16 @@ jobs:
       
       - name: Create wrapper script
         run: |
-          cat > dist/idb_embedded/idb << 'ENDOFFILE'
+          cat > dist/idb_embedded/idb << 'EOFWRAPPER'
           #!/bin/bash
-          # Wrapper script for IDB embedded binary
           SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
           exec "$SCRIPT_DIR/idb_embedded" "$@"
-          ENDOFFILE
+          EOFWRAPPER
           chmod +x dist/idb_embedded/idb
-          
-          echo "Wrapper script created. Users can now run './idb' instead of './idb_embedded'"
       
       - name: Create README for binary distribution
         run: |
-          cat > dist/idb_embedded/README.md << 'ENDOFFILE'
+          cat > dist/idb_embedded/README.md << 'EOFREADME'
           # IDB Standalone Binary
           
           This is a self-contained IDB (iOS Debug Bridge) binary built with PyInstaller.
@@ -295,7 +290,7 @@ jobs:
           
           ## Requirements
           
-          - macOS ${{ matrix.os }} or compatible
+          - macOS (compatible with this architecture)
           - No Python installation required
           - Architecture: ${{ matrix.arch }}
           
@@ -308,11 +303,10 @@ jobs:
           ## Version
           
           IDB Version: 1.1.3
-          Built on: $(date)
           
           ## Troubleshooting
           
-          If you encounter permission errors, make sure the binary is executable:
+          If you encounter permission errors:
 ```bash
           chmod +x idb_embedded idb
 ```
@@ -321,7 +315,7 @@ jobs:
           
           - IDB Repository: https://github.com/facebook/idb
           - Documentation: https://fbidb.io
-          ENDOFFILE
+          EOFREADME
       
       - name: Create distribution package
         run: |
@@ -357,22 +351,22 @@ jobs:
       
       - name: Create release notes
         run: |
-          cat > RELEASE_NOTES.md << 'ENDOFFILE'
+          cat > RELEASE_NOTES.md << 'EOFRELEASE'
           # IDB Standalone Binaries
           
           Self-contained IDB (iOS Debug Bridge) binaries for macOS.
           
           ## Available Builds
           
-          - **ARM64** (Apple Silicon): `idb-arm64-macos.tar.gz`
-          - **x86_64** (Intel): `idb-x86_64-macos.tar.gz`
+          - **ARM64** (Apple Silicon): idb-arm64-macos.tar.gz
+          - **x86_64** (Intel): idb-x86_64-macos.tar.gz
           
           ## Installation
           
           1. Download the appropriate binary for your system
-          2. Extract: `tar -xzf idb-[arch]-macos.tar.gz`
-          3. Make executable: `chmod +x idb_embedded/idb_embedded idb_embedded/idb`
-          4. Run: `./idb_embedded/idb --help`
+          2. Extract: tar -xzf idb-[arch]-macos.tar.gz
+          3. Make executable: chmod +x idb_embedded/idb_embedded idb_embedded/idb
+          4. Run: ./idb_embedded/idb --help
           
           ## Features
           
@@ -384,16 +378,14 @@ jobs:
           ## Testing
           
           All binaries have been tested with:
-          - `--help` command
-          - `list-targets --json` command
+          - --help command
+          - list-targets --json command
           
           ## System Requirements
           
           - macOS 13.0 or later (for x86_64)
           - macOS 14.0 or later (for ARM64)
-          
-          Built on: $(date)
-          ENDOFFILE
+          EOFRELEASE
           
           cat RELEASE_NOTES.md
       
