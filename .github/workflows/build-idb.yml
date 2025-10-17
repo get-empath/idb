@@ -268,25 +268,25 @@ jobs:
           This is a self-contained IDB (iOS Debug Bridge) binary built with PyInstaller.
           
           ## Architecture
+          
           Built for: ${{ matrix.arch }} (${{ matrix.runner_arch }})
           
           ## Usage
           
           You can run IDB using either:
-          - `./idb_embedded [command]` - Direct execution
-          - `./idb [command]` - Wrapper script (recommended)
+          - ./idb_embedded [command] - Direct execution
+          - ./idb [command] - Wrapper script (recommended)
           
           ## Examples
-```bash
-          # Show help
+          
+          Show help:
           ./idb --help
           
-          # List connected iOS devices/simulators
+          List connected iOS devices/simulators:
           ./idb list-targets
           
-          # List targets in JSON format
+          List targets in JSON format:
           ./idb list-targets --json
-```
           
           ## Requirements
           
@@ -296,9 +296,9 @@ jobs:
           
           ## Directory Structure
           
-          - `idb_embedded` - Main executable (~4MB)
-          - `_internal/` - Dependencies directory (~15-20MB)
-          - `idb` - Convenience wrapper script
+          - idb_embedded - Main executable (~4MB)
+          - _internal/ - Dependencies directory (~15-20MB)
+          - idb - Convenience wrapper script
           
           ## Version
           
@@ -307,9 +307,7 @@ jobs:
           ## Troubleshooting
           
           If you encounter permission errors:
-```bash
           chmod +x idb_embedded idb
-```
           
           ## More Information
           
@@ -358,8 +356,8 @@ jobs:
           
           ## Available Builds
           
-          - **ARM64** (Apple Silicon): idb-arm64-macos.tar.gz
-          - **x86_64** (Intel): idb-x86_64-macos.tar.gz
+          - ARM64 (Apple Silicon): idb-arm64-macos.tar.gz
+          - x86_64 (Intel): idb-x86_64-macos.tar.gz
           
           ## Installation
           
