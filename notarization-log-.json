@@ -1,0 +1,101 @@
+{
+  "logFormatVersion": 1,
+  "jobId": "cb4b1d04-ff2e-4007-9e0b-7d08f51665e3",
+  "status": "Invalid",
+  "statusSummary": "Archive contains critical validation errors",
+  "statusCode": 4000,
+  "archiveFilename": "idb-properly-signed-final-notarization.zip",
+  "uploadDate": "2025-07-03T00:55:05.962Z",
+  "sha256": "0659b6d9adc28644192cada5a18970f52204a22f6e8c505726357cccf0a061ed",
+  "ticketContents": null,
+  "issues": [
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/bin/_internal/Python.framework/Python",
+      "message": "The binary is not signed.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087721",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/bin/_internal/Python.framework/Python",
+      "message": "The signature does not include a secure timestamp.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087733",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/bin/_internal/Python.framework/Versions/Current/Python",
+      "message": "The binary is not signed.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087721",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/bin/_internal/Python.framework/Versions/Current/Python",
+      "message": "The signature does not include a secure timestamp.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087733",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/Frameworks/IDBGRPCSwift.framework/IDBGRPCSwift",
+      "message": "The signature of the binary is invalid.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087735",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/Frameworks/FBControlCore.framework/FBControlCore",
+      "message": "The signature of the binary is invalid.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087735",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/Frameworks/IDBCompanionUtilities.framework/IDBCompanionUtilities",
+      "message": "The signature of the binary is invalid.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087735",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/Frameworks/XCTestBootstrap.framework/XCTestBootstrap",
+      "message": "The signature of the binary is invalid.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087735",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/Frameworks/FBSimulatorControl.framework/FBSimulatorControl",
+      "message": "The signature of the binary is invalid.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087735",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/Frameworks/CompanionLib.framework/CompanionLib",
+      "message": "The signature of the binary is invalid.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087735",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "idb-properly-signed-final-notarization.zip/Frameworks/FBDeviceControl.framework/FBDeviceControl",
+      "message": "The signature of the binary is invalid.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087735",
+      "architecture": "arm64"
+    }
+  ]
+}

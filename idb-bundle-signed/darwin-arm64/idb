@@ -1,0 +1,12 @@
+#!/bin/bash
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$DIR/python/site-packages:$PYTHONPATH"
+export DYLD_FRAMEWORK_PATH="$DIR/Frameworks:$DYLD_FRAMEWORK_PATH"
+
+# Use the system python3.13 but with our bundled packages
+exec python3.13 -c "
+import sys
+sys.path.insert(0, '$DIR/python/site-packages')
+from idb.cli.main import main
+main()
+" "$@"

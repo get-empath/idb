@@ -1,0 +1,14 @@
+
+#!/bin/bash
+# IDB wrapper script that explicitly passes companion path
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Set up environment for bundled frameworks
+export DYLD_FRAMEWORK_PATH="$DIR/Frameworks:$DYLD_FRAMEWORK_PATH"
+export DYLD_LIBRARY_PATH="$DIR/lib:$DYLD_LIBRARY_PATH"
+
+# Set the companion path environment variable (as backup)
+export IDB_COMPANION_PATH="$DIR/bin/idb_companion"
+
+# Execute the IDB binary with explicit companion path argument
+exec "$DIR/bin/idb_embedded" --companion-path "$DIR/bin/idb_companion" "$@"
