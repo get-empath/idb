@@ -63,11 +63,11 @@ jobs:
           
           # The working local build uses grpc-swift 1.10.0
           # We need to ensure Package.resolved exists with these exact versions
+          # Using version 2 format for Xcode 15.2 compatibility
           mkdir -p idb_companion.xcworkspace/xcshareddata/swiftpm
           
           cat > idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved << 'EOF'
           {
-            "originHash" : "b0d8975aa19f1bb7106ae78f24de3911e84189892afc3b6fe6db19bcec9e631c",
             "pins" : [
               {
                 "identity" : "grpc-swift",
@@ -79,7 +79,7 @@ jobs:
                 }
               }
             ],
-            "version" : 3
+            "version" : 2
           }
           EOF
           
