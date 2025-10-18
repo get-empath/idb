@@ -22,12 +22,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-14
+          - os: macos-13
             arch: arm64
-            xcode: "15.2"
+            xcode: "14.3.1"
           - os: macos-13
             arch: x86_64
-            xcode: "15.2"
+            xcode: "14.3.1"
     
     runs-on: ${{ matrix.os }}
     
@@ -56,6 +56,26 @@ jobs:
           brew install grpc
           which protoc
           protoc --version
+      
+      - name: Resolve Swift Package dependencies to compatible versions
+        run: |
+          echo "Resolving Swift Package dependencies..."
+          
+          # Check if Package.resolved exists
+          if [ -f "idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved" ]; then
+            echo "Package.resolved found, backing up..."
+            cp idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved \
+               idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved.bak
+          fi
+          
+          # Resolve packages with xcodebuild
+          xcodebuild \
+            -resolvePackageDependencies \
+            -workspace idb_companion.xcworkspace \
+            -scheme idb_companion \
+            -configuration Release
+          
+          echo "Swift packages resolved successfully"
 
       - name: Fix documentation warnings in IDB source
         run: |
@@ -136,7 +156,7 @@ jobs:
             done
           fi
           
-          # Build using xcodebuild directly like the local script
+          # Build using xcodebuild with Swift 5 mode to avoid Swift 6 concurrency issues
           xcodebuild \
             -workspace idb_companion.xcworkspace \
             -scheme idb_companion \
@@ -144,8 +164,13 @@ jobs:
             -arch ${{ matrix.arch }} \
             -derivedDataPath build \
             ONLY_ACTIVE_ARCH=YES \
+            SWIFT_VERSION=5.0 \
             SWIFT_STRICT_CONCURRENCY=minimal \
-            build
+            build || {
+              echo "Build failed. Checking logs..."
+              find build -name "*.xcactivitylog" -exec echo "Found log: {}" \;
+              exit 1
+            }
         
       - name: Locate and verify companion binary
         run: |
