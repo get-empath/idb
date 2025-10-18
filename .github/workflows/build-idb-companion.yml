@@ -68,9 +68,73 @@ jobs:
             echo "Warning: FBArchiveOperations.h not found, skipping patch"
           fi
       
+      - name: Pre-build FBSimulatorControl and fix headers
+        run: |
+          echo "Pre-building FBSimulatorControl framework..."
+          
+          # Build FBSimulatorControl first
+          xcodebuild \
+            -project FBSimulatorControl.xcodeproj \
+            -scheme FBSimulatorControl \
+            -configuration Release \
+            -arch ${{ matrix.arch }} \
+            -derivedDataPath build \
+            ONLY_ACTIVE_ARCH=YES \
+            build || echo "FBSimulatorControl build completed with warnings"
+          
+          # Check if framework was built
+          FRAMEWORK_PATH="build/Build/Products/Release/FBSimulatorControl.framework"
+          if [ -d "$FRAMEWORK_PATH" ]; then
+            echo "✅ FBSimulatorControl framework found"
+            
+            # List current headers
+            echo "Current headers in framework:"
+            ls -la "$FRAMEWORK_PATH/Headers/" 2>/dev/null || mkdir -p "$FRAMEWORK_PATH/Headers/"
+            
+            # Count headers before fix
+            BEFORE_COUNT=$(find "$FRAMEWORK_PATH/Headers/" -name "*.h" 2>/dev/null | wc -l | tr -d ' ')
+            echo "Headers before fix: $BEFORE_COUNT"
+            
+            # Copy ALL headers from FBSimulatorControl source to framework
+            echo "Copying all FBSimulatorControl headers to framework..."
+            find FBSimulatorControl -name "*.h" -type f | while read header; do
+              cp "$header" "$FRAMEWORK_PATH/Headers/" 2>/dev/null || true
+            done
+            
+            # Count headers after fix
+            AFTER_COUNT=$(find "$FRAMEWORK_PATH/Headers/" -name "*.h" 2>/dev/null | wc -l | tr -d ' ')
+            echo "Headers after fix: $AFTER_COUNT"
+            
+            # Verify the specific missing header exists
+            if [ -f "$FRAMEWORK_PATH/Headers/FBSimulatorApplicationCommands.h" ]; then
+              echo "✅ FBSimulatorApplicationCommands.h is now present"
+            else
+              echo "⚠️  FBSimulatorApplicationCommands.h still missing, searching source..."
+              find . -name "FBSimulatorApplicationCommands.h" -type f
+            fi
+            
+            # List all headers for debugging
+            echo "All headers in framework:"
+            ls -1 "$FRAMEWORK_PATH/Headers/" | head -30
+          else
+            echo "❌ FBSimulatorControl framework not found, build may have failed"
+            exit 1
+          fi
+      
       - name: Build IDB Companion using xcodebuild directly
         run: |
           echo "Building IDB Companion with xcodebuild (similar to local script)..."
+          
+          # Verify FBSimulatorControl headers are still present before main build
+          FRAMEWORK_PATH="build/Build/Products/Release/FBSimulatorControl.framework"
+          if [ -f "$FRAMEWORK_PATH/Headers/FBSimulatorApplicationCommands.h" ]; then
+            echo "✅ Headers verified before main build"
+          else
+            echo "⚠️  Headers missing before main build, re-copying..."
+            find FBSimulatorControl -name "*.h" -type f | while read header; do
+              cp "$header" "$FRAMEWORK_PATH/Headers/" 2>/dev/null || true
+            done
+          fi
           
           # Build using xcodebuild directly like the local script
           xcodebuild \
