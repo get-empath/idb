@@ -79,6 +79,8 @@ jobs:
           
           echo "Build complete. Searching for companion binary..."
           find . -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | head -5
+        env:
+          SWIFT_STRICT_CONCURRENCY: minimal
       
       - name: Locate and verify companion binary
         run: |
