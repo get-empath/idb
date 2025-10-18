@@ -75,6 +75,11 @@ jobs:
       - name: Build IDB Companion using idb_build.sh
         run: |
           echo "Building IDB Companion with idb_build.sh..."
+          
+          # First build attempt - may fail but generates some needed files
+          ./idb_build.sh idb_companion build "$(pwd)/companion_output" || true
+          
+          # Second build should succeed with all headers in place
           ./idb_build.sh idb_companion build "$(pwd)/companion_output"
           
           echo "Build complete. Searching for companion binary..."
