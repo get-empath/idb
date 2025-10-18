@@ -24,10 +24,10 @@ jobs:
         include:
           - os: macos-14
             arch: arm64
-            xcode: "15.2"
+            xcode: "16.4"
           - os: macos-13
             arch: x86_64
-            xcode: "15.2"
+            xcode: "16.4"
     
     runs-on: ${{ matrix.os }}
     
