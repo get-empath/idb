@@ -22,12 +22,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
+          - os: macos-14
             arch: arm64
-            xcode: "14.3.1"
+            xcode: "15.2"
           - os: macos-13
             arch: x86_64
-            xcode: "14.3.1"
+            xcode: "15.2"
     
     runs-on: ${{ matrix.os }}
     
@@ -59,23 +59,32 @@ jobs:
       
       - name: Resolve Swift Package dependencies to compatible versions
         run: |
-          echo "Resolving Swift Package dependencies..."
+          echo "Pinning Swift packages to known working versions..."
           
-          # Check if Package.resolved exists
-          if [ -f "idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved" ]; then
-            echo "Package.resolved found, backing up..."
-            cp idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved \
-               idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved.bak
-          fi
+          # The working local build uses grpc-swift 1.10.0
+          # We need to ensure Package.resolved exists with these exact versions
+          mkdir -p idb_companion.xcworkspace/xcshareddata/swiftpm
           
-          # Resolve packages with xcodebuild
-          xcodebuild \
-            -resolvePackageDependencies \
-            -workspace idb_companion.xcworkspace \
-            -scheme idb_companion \
-            -configuration Release
+          cat > idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved << 'EOF'
+          {
+            "originHash" : "b0d8975aa19f1bb7106ae78f24de3911e84189892afc3b6fe6db19bcec9e631c",
+            "pins" : [
+              {
+                "identity" : "grpc-swift",
+                "kind" : "remoteSourceControl",
+                "location" : "https://github.com/grpc/grpc-swift.git",
+                "state" : {
+                  "revision" : "6cab35e471cd8e35df5ef913c749527369f67553",
+                  "version" : "1.10.0"
+                }
+              }
+            ],
+            "version" : 3
+          }
+          EOF
           
-          echo "Swift packages resolved successfully"
+          echo "Package.resolved created with grpc-swift 1.10.0"
+          cat idb_companion.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
       - name: Fix documentation warnings in IDB source
         run: |
@@ -156,7 +165,7 @@ jobs:
             done
           fi
           
-          # Build using xcodebuild with Swift 5 mode to avoid Swift 6 concurrency issues
+          # Build using xcodebuild with proper settings
           xcodebuild \
             -workspace idb_companion.xcworkspace \
             -scheme idb_companion \
@@ -164,8 +173,6 @@ jobs:
             -arch ${{ matrix.arch }} \
             -derivedDataPath build \
             ONLY_ACTIVE_ARCH=YES \
-            SWIFT_VERSION=5.0 \
-            SWIFT_STRICT_CONCURRENCY=minimal \
             build || {
               echo "Build failed. Checking logs..."
               find build -name "*.xcactivitylog" -exec echo "Found log: {}" \;
