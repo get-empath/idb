@@ -1,4 +1,4 @@
-name: Build IDB Companion Binaries
+name: Build IDB Companion Binaries (Alternative)
 
 on:
   push:
@@ -67,246 +67,40 @@ jobs:
           else
             echo "Warning: FBArchiveOperations.h not found, skipping patch"
           fi
-          
-          echo "Fixing FBSimulatorControl header issues..."
-          # Ensure all FBSimulatorControl headers exist
-          if [ -d "FBSimulatorControl" ]; then
-            echo "FBSimulatorControl directory found"
-            ls -la FBSimulatorControl/ || true
-          fi
       
-      - name: Pre-build FBSimulatorControl framework
+      - name: Build IDB Companion using xcodebuild directly
         run: |
-          echo "Building FBSimulatorControl framework separately for ${{ matrix.arch }}..."
+          echo "Building IDB Companion with xcodebuild (similar to local script)..."
           
-          # Build FBSimulatorControl with explicit architecture
-          xcodebuild build \
-            -project FBSimulatorControl.xcodeproj \
-            -scheme FBSimulatorControl \
+          # Build using xcodebuild directly like the local script
+          xcodebuild \
+            -workspace idb_companion.xcworkspace \
+            -scheme idb_companion \
             -configuration Release \
             -arch ${{ matrix.arch }} \
+            -derivedDataPath build \
             ONLY_ACTIVE_ARCH=YES \
-            BUILD_DIR="$(pwd)/build/Build" \
-            OBJROOT="$(pwd)/build/Build/Intermediates.noindex" \
-            SYMROOT="$(pwd)/build/Build" || {
-              echo "FBSimulatorControl build failed, but continuing..."
-            }
-          
-          echo "Checking FBSimulatorControl framework structure..."
-          if [ -d "build/Build/Products/Release/FBSimulatorControl.framework" ]; then
-            echo "Framework exists, checking headers..."
-            ls -la build/Build/Products/Release/FBSimulatorControl.framework/Headers/ || true
-            
-            # Count headers
-            HEADER_COUNT=$(find build/Build/Products/Release/FBSimulatorControl.framework/Headers/ -name "*.h" 2>/dev/null | wc -l)
-            echo "Found $HEADER_COUNT header files"
-            
-            # Check for the specific missing header
-            if [ ! -f "build/Build/Products/Release/FBSimulatorControl.framework/Headers/FBSimulatorApplicationCommands.h" ]; then
-              echo "WARNING: FBSimulatorApplicationCommands.h is missing!"
-              echo "Searching for this file in source..."
-              find FBSimulatorControl -name "FBSimulatorApplicationCommands.h" 2>/dev/null || true
-              
-              # Manually copy all headers if build didn't install them properly
-              echo "Manually copying all public headers..."
-              find FBSimulatorControl -name "*.h" -type f -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
-              
-              echo "Headers after manual copy:"
-              ls -la build/Build/Products/Release/FBSimulatorControl.framework/Headers/ | wc -l
-            fi
-          else
-            echo "FBSimulatorControl framework not found at expected location"
-          fi
-      
-      - name: Build IDB Companion using idb_build.sh
-        run: |
-          echo "Building IDB Companion with idb_build.sh..."
-          
-          # Set architecture-specific build settings
-          export ARCHS="${{ matrix.arch }}"
-          export ONLY_ACTIVE_ARCH=YES
-          
-          echo "Building for architecture: ${{ matrix.arch }}"
-          
-          # First build attempt to generate dependencies
-          ./idb_build.sh idb_companion build "$(pwd)/companion_output" || {
-            echo "First build attempt failed, attempting to fix FBSimulatorControl headers..."
-            
-            # Check what headers exist in the framework
-            if [ -d "build/Build/Products/Release/FBSimulatorControl.framework/Headers" ]; then
-              echo "Current headers in framework:"
-              ls -la build/Build/Products/Release/FBSimulatorControl.framework/Headers/
-              
-              # Find and copy missing headers from source
-              echo "Copying missing headers from source..."
-              if [ -d "FBSimulatorControl/Commands" ]; then
-                find FBSimulatorControl/Commands -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
-              fi
-              
-              if [ -d "FBSimulatorControl/Management" ]; then
-                find FBSimulatorControl/Management -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
-              fi
-              
-              if [ -d "FBSimulatorControl/Utility" ]; then
-                find FBSimulatorControl/Utility -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
-              fi
-              
-              if [ -d "FBSimulatorControl/Strategies" ]; then
-                find FBSimulatorControl/Strategies -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
-              fi
-              
-              if [ -d "FBSimulatorControl/Configuration" ]; then
-                find FBSimulatorControl/Configuration -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
-              fi
-              
-              echo "Headers after copying:"
-              ls -la build/Build/Products/Release/FBSimulatorControl.framework/Headers/ | wc -l
-            fi
-            
-            echo "Retrying build after header fix..."
-          }
-          
-          # Make the entire build directory writable for patching
-          if [ -d "build/SourcePackages/checkouts" ]; then
-            chmod -R +w build/SourcePackages/checkouts/ || true
-          fi
-          
-          GRPC_DIR=$(find build/SourcePackages/checkouts -name "grpc-swift" -type d 2>/dev/null | head -1)
-          if [ -n "$GRPC_DIR" ]; then
-            echo "Found grpc-swift at: $GRPC_DIR"
-            CONFIGURATOR_FILE="$GRPC_DIR/Sources/GRPC/GRPCServerPipelineConfigurator.swift"
-            
-            if [ -f "$CONFIGURATOR_FILE" ]; then
-              echo "Patching GRPCServerPipelineConfigurator.swift for Swift 6 concurrency..."
-              
-              # Ensure file is writable
-              chmod +w "$CONFIGURATOR_FILE" || {
-                echo "Warning: Could not make file writable, attempting patch anyway..."
-              }
-              
-              # Backup original
-              cp "$CONFIGURATOR_FILE" "$CONFIGURATOR_FILE.bak" || {
-                echo "Warning: Could not create backup"
-              }
-              
-              cat > "$CONFIGURATOR_FILE" << 'ENDPATCH'
-          import NIOHPACK
-          import NIOCore
-          import NIOHTTP2
-          import Logging
-
-          public struct GRPCServerPipelineConfigurator {
-            private let servicesByName: [Substring: CallHandlerProvider]
-            private var logger: Logger
-            private let errorDelegate: ServerErrorDelegate?
-            private let normalizeHeaders: Bool
-            private let maximumReceiveMessageLength: Int
-            private let encoding: ServerMessageEncoding
-
-            public init(
-              serviceProviders: [CallHandlerProvider],
-              logger: Logger,
-              errorDelegate: ServerErrorDelegate?,
-              normalizeHeaders: Bool,
-              maximumReceiveMessageLength: Int,
-              encoding: ServerMessageEncoding
-            ) {
-              var servicesByName: [Substring: CallHandlerProvider] = [:]
-              for provider in serviceProviders {
-                servicesByName[provider.serviceName[...]] = provider
-              }
-              
-              self.servicesByName = servicesByName
-              self.logger = logger
-              self.errorDelegate = errorDelegate
-              self.normalizeHeaders = normalizeHeaders
-              self.maximumReceiveMessageLength = maximumReceiveMessageLength
-              self.encoding = encoding
-            }
-
-            public func configureGRPCPipeline(
-              channel: Channel,
-              streamID: HTTP2StreamID
-            ) -> EventLoopFuture<Void> {
-              var streamLogger = self.logger
-              streamLogger[metadataKey: MetadataKey.h2StreamID] = "\(streamID)"
-
-              return channel.eventLoop.flatSubmit {
-                channel.pipeline.addHandlers([
-                  self.makeHTTP2ToRawGRPCHandler(normalizeHeaders: self.normalizeHeaders, logger: streamLogger),
-                  self.makeRequestRoutingHandler(logger: streamLogger)
-                ])
-              }
-            }
-
-            private func makeHTTP2ToRawGRPCHandler(
-              normalizeHeaders: Bool,
-              logger: Logger
-            ) -> HTTP2ToRawGRPCServerCodec {
-              return HTTP2ToRawGRPCServerCodec(
-                normalizeHTTPHeaders: normalizeHeaders,
-                maximumReceiveMessageLength: self.maximumReceiveMessageLength,
-                logger: logger
-              )
-            }
-
-            private func makeRequestRoutingHandler(
-              logger: Logger
-            ) -> GRPCServerRequestRoutingHandler {
-              return GRPCServerRequestRoutingHandler(
-                servicesByName: self.servicesByName,
-                encoding: self.encoding,
-                errorDelegate: self.errorDelegate,
-                logger: logger
-              )
-            }
-          }
-          ENDPATCH
-              
-              echo "Patch applied successfully to GRPCServerPipelineConfigurator.swift"
-            else
-              echo "Warning: GRPCServerPipelineConfigurator.swift not found at expected location"
-            fi
-          else
-            echo "Warning: grpc-swift directory not found, skipping patch"
-          fi
-          
-          echo "Starting final build of IDB Companion..."
-          ./idb_build.sh idb_companion build "$(pwd)/companion_output" || {
-            echo "Build failed. Checking for partial build artifacts..."
-            find . -name "idb_companion" -type f 2>/dev/null | head -10
-            exit 1
-          }
-          
-          echo "Build complete. Searching for companion binary..."
-          find . -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | head -5
-        env:
-          SWIFT_STRICT_CONCURRENCY: minimal
-      
+            SWIFT_STRICT_CONCURRENCY=minimal \
+            build
+        
       - name: Locate and verify companion binary
         run: |
           echo "Searching for idb_companion binary..."
           
           COMPANION_PATH=""
           
-          if [ -f "companion_output/idb_companion" ]; then
-            COMPANION_PATH="companion_output/idb_companion"
-          elif [ -d "build" ]; then
+          # Check in the derivedDataPath/Build/Products/Release
+          if [ -f "build/Build/Products/Release/idb_companion" ]; then
+            COMPANION_PATH="build/Build/Products/Release/idb_companion"
+          else
+            # Search in build directory
             COMPANION_PATH=$(find build -name "idb_companion" -type f | grep -v ".build" | head -n 1)
-          fi
-          
-          if [ -z "$COMPANION_PATH" ]; then
-            echo "Searching entire directory..."
-            COMPANION_PATH=$(find . -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | grep -v ".git" | head -n 1)
           fi
           
           if [ -z "$COMPANION_PATH" ]; then
             echo "ERROR: Could not find idb_companion binary"
             echo "Directory structure:"
-            ls -la
-            echo ""
-            echo "Searching for any companion-related files:"
-            find . -name "*companion*" -type f | head -20
+            ls -laR build/Build/Products/ || ls -la build/
             exit 1
           fi
           
@@ -330,9 +124,9 @@ jobs:
             cp -R "$RELEASE_DIR/Frameworks"/* "dist/idb-companion-${{ matrix.arch }}/Frameworks/"
           fi
           
-          if [ -d "frameworks_build/Frameworks" ]; then
-            echo "Copying additional frameworks from frameworks_build..."
-            cp -R frameworks_build/Frameworks/* "dist/idb-companion-${{ matrix.arch }}/Frameworks/" 2>/dev/null || true
+          # Also check for frameworks in the build directory
+          if [ -d "build/Build/Products/Release" ]; then
+            find build/Build/Products/Release -name "*.framework" -exec cp -R {} "dist/idb-companion-${{ matrix.arch }}/Frameworks/" \; 2>/dev/null || true
           fi
           
           echo "Distribution directory created:"
