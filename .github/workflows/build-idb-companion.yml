@@ -3,8 +3,18 @@ name: Build IDB Companion Binaries
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - '.github/workflows/build-idb-companion.yml'
+      - 'idb_companion/**'
+      - 'build.sh'
+      - 'idb_build.sh'
   pull_request:
     branches: [ main, master ]
+    paths:
+      - '.github/workflows/build-idb-companion.yml'
+      - 'idb_companion/**'
+      - 'build.sh'
+      - 'idb_build.sh'
   workflow_dispatch:
 
 jobs:
@@ -42,9 +52,6 @@ jobs:
       
       - name: Install build dependencies
         run: |
-          # Install CocoaPods
-          gem install cocoapods
-          
           # Install grpc and protoc (needed for building)
           brew tap grpc/grpc
           brew install grpc
@@ -53,50 +60,42 @@ jobs:
           which protoc
           protoc --version
       
-      - name: Install CocoaPods dependencies
+      - name: Build IDB Companion using idb_build.sh
         run: |
-          # Check if Podfile exists
-          if [ ! -f "Podfile" ]; then
-            echo "ERROR: Podfile not found in $(pwd)"
-            echo "Directory contents:"
-            ls -la
-            exit 1
-          fi
-          
-          # Install pod dependencies
-          pod install
-      
-      - name: Build IDB Frameworks
-        run: |
-          echo "Building IDB frameworks..."
-          ./build.sh framework build "$(pwd)/frameworks_build"
-          
-          echo "Framework build complete. Contents:"
-          ls -la frameworks_build/ || echo "frameworks_build directory not found"
-      
-      - name: Build IDB Companion with xcodebuild
-        run: |
-          echo "Building IDB Companion..."
-          xcodebuild \
-            -workspace idb_companion.xcworkspace \
-            -scheme idb_companion \
-            -configuration Release \
-            -derivedDataPath build \
-            build
+          echo "Building IDB Companion with idb_build.sh..."
+          ./idb_build.sh idb_companion build "$(pwd)/companion_output"
           
           echo "Build complete. Searching for companion binary..."
-          find build -name "idb_companion" -type f
+          find . -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | head -5
       
       - name: Locate and verify companion binary
         run: |
-          # Find the companion binary
-          COMPANION_PATH=$(find build/Build/Products/Release -name "idb_companion" -type f | head -n 1)
+          # The idb_build.sh script should output to the specified directory
+          # But let's search comprehensively
+          echo "Searching for idb_companion binary..."
+          
+          COMPANION_PATH=""
+          
+          # Check common locations
+          if [ -f "companion_output/idb_companion" ]; then
+            COMPANION_PATH="companion_output/idb_companion"
+          elif [ -d "build" ]; then
+            COMPANION_PATH=$(find build -name "idb_companion" -type f | grep -v ".build" | head -n 1)
+          fi
+          
+          # If still not found, search everywhere
+          if [ -z "$COMPANION_PATH" ]; then
+            echo "Searching entire directory..."
+            COMPANION_PATH=$(find . -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | grep -v ".git" | head -n 1)
+          fi
           
           if [ -z "$COMPANION_PATH" ]; then
             echo "ERROR: Could not find idb_companion binary"
-            echo "Build directory contents:"
-            find build -type d -name "Release"
-            find build -type f -name "*companion*"
+            echo "Directory structure:"
+            ls -la
+            echo ""
+            echo "Searching for any companion-related files:"
+            find . -name "*companion*" -type f | head -20
             exit 1
           fi
           
