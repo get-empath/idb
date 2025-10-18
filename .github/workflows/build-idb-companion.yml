@@ -72,18 +72,25 @@ jobs:
             echo "Warning: FBArchiveOperations.h not found, skipping patch"
           fi    
       
-      - name: Build IDB Companion using idb_build.sh
+      - name: Build IDB Companion using xcodebuild
         run: |
-          echo "Building IDB Companion with idb_build.sh..."
+          echo "Building IDB Companion with xcodebuild..."
           
-          # First build attempt - may fail but generates some needed files
-          ./idb_build.sh idb_companion build "$(pwd)/companion_output" || true
+          cd idb_companion
           
-          # Second build should succeed with all headers in place
-          ./idb_build.sh idb_companion build "$(pwd)/companion_output"
+          # Build with explicit scheme and proper dependency resolution
+          xcodebuild \
+            -project idb_companion.xcodeproj \
+            -scheme idb_companion \
+            -configuration Release \
+            -derivedDataPath "$(pwd)/../build" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            build
           
           echo "Build complete. Searching for companion binary..."
-          find . -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | head -5
+          find ../build -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | head -5
         env:
           SWIFT_STRICT_CONCURRENCY: minimal
       
