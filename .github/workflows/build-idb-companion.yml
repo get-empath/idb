@@ -40,35 +40,78 @@ jobs:
           xcodebuild -version
           echo "Building for architecture: ${{ matrix.arch }}"
       
-      - name: Install dependencies
+      - name: Install CocoaPods dependencies
         run: |
-          # Install Carthage for dependency management
-          brew install carthage
+          gem install cocoapods
+          pod install
       
-      - name: Build IDB Companion
+      - name: Build IDB Frameworks
         run: |
-          cd idb_companion
-          ./idb_companion.py build
+          echo "Building IDB frameworks..."
+          ./build.sh framework build "$(pwd)/frameworks_build"
+          
+          echo "Framework build complete. Contents:"
+          ls -la frameworks_build/ || echo "frameworks_build directory not found"
       
-      - name: Verify build
+      - name: Build IDB Companion with xcodebuild
         run: |
-          echo "Checking built binary:"
-          file idb_companion/build/Build/Products/Release/idb_companion
-          lipo -info idb_companion/build/Build/Products/Release/idb_companion
+          echo "Building IDB Companion..."
+          xcodebuild \
+            -workspace idb_companion.xcworkspace \
+            -scheme idb_companion \
+            -configuration Release \
+            -derivedDataPath build \
+            build
+          
+          echo "Build complete. Searching for companion binary..."
+          find build -name "idb_companion" -type f
+      
+      - name: Locate and verify companion binary
+        run: |
+          # Find the companion binary
+          COMPANION_PATH=$(find build/Build/Products/Release -name "idb_companion" -type f | head -n 1)
+          
+          if [ -z "$COMPANION_PATH" ]; then
+            echo "ERROR: Could not find idb_companion binary"
+            echo "Build directory contents:"
+            find build -type d -name "Release"
+            find build -type f -name "*companion*"
+            exit 1
+          fi
+          
+          echo "Found idb_companion at: $COMPANION_PATH"
+          file "$COMPANION_PATH"
+          lipo -info "$COMPANION_PATH"
+          
+          # Save for next steps
+          echo "COMPANION_PATH=$COMPANION_PATH" >> $GITHUB_ENV
+          echo "RELEASE_DIR=$(dirname $COMPANION_PATH)" >> $GITHUB_ENV
       
       - name: Create distribution directory
         run: |
-          mkdir -p dist/idb-companion-${{ matrix.arch }}
+          mkdir -p dist/idb-companion-${{ matrix.arch }}/bin
+          mkdir -p dist/idb-companion-${{ matrix.arch }}/Frameworks
           
-          # Copy the companion binary
-          cp idb_companion/build/Build/Products/Release/idb_companion \
-             dist/idb-companion-${{ matrix.arch }}/
+          # Copy companion binary
+          cp "$COMPANION_PATH" dist/idb-companion-${{ matrix.arch }}/bin/idb_companion
+          chmod +x dist/idb-companion-${{ matrix.arch }}/bin/idb_companion
           
           # Copy frameworks if they exist
-          if [ -d "idb_companion/build/Build/Products/Release/Frameworks" ]; then
-            cp -R idb_companion/build/Build/Products/Release/Frameworks \
-               dist/idb-companion-${{ matrix.arch }}/
+          if [ -d "$RELEASE_DIR/Frameworks" ]; then
+            echo "Copying frameworks..."
+            cp -R "$RELEASE_DIR/Frameworks"/* dist/idb-companion-${{ matrix.arch }}/Frameworks/
           fi
+          
+          # Also copy frameworks from frameworks_build if they exist
+          if [ -d "frameworks_build/Frameworks" ]; then
+            echo "Copying additional frameworks from frameworks_build..."
+            cp -R frameworks_build/Frameworks/* dist/idb-companion-${{ matrix.arch }}/Frameworks/ 2>/dev/null || true
+          fi
+          
+          echo "Distribution directory created:"
+          ls -la dist/idb-companion-${{ matrix.arch }}/
+          ls -la dist/idb-companion-${{ matrix.arch }}/bin/
+          ls -la dist/idb-companion-${{ matrix.arch }}/Frameworks/ 2>/dev/null || echo "No frameworks directory"
       
       - name: Create README
         run: |
@@ -86,13 +129,19 @@ jobs:
           You can also run it manually:
           
           ```bash
-          ./idb_companion --help
+          ./bin/idb_companion --help
           ```
+          
+          ## Structure
+          
+          - `bin/idb_companion` - Main companion executable
+          - `Frameworks/` - Required frameworks (if any)
           
           ## Version
           
           Built from: facebook/idb main branch
           Build date: $(date)
+          Xcode version: ${{ matrix.xcode }}
           
           ## More Information
           
@@ -141,28 +190,37 @@ jobs:
       
       - name: Create universal binary
         run: |
-          mkdir -p universal-build
+          mkdir -p universal-build/bin
+          mkdir -p universal-build/Frameworks
           
           # Create universal binary using lipo
           lipo -create \
-            arm64-build/idb_companion \
-            x86_64-build/idb_companion \
-            -output universal-build/idb_companion
+            arm64-build/bin/idb_companion \
+            x86_64-build/bin/idb_companion \
+            -output universal-build/bin/idb_companion
           
           # Make it executable
-          chmod +x universal-build/idb_companion
+          chmod +x universal-build/bin/idb_companion
+          
+          echo "Universal binary created successfully"
       
       - name: Verify universal binary
         run: |
           echo "Universal binary info:"
-          file universal-build/idb_companion
-          lipo -info universal-build/idb_companion
-          ls -lh universal-build/idb_companion
+          file universal-build/bin/idb_companion
+          lipo -info universal-build/bin/idb_companion
+          ls -lh universal-build/bin/idb_companion
       
       - name: Copy frameworks (prefer ARM64 version)
         run: |
-          if [ -d "arm64-build/Frameworks" ]; then
-            cp -R arm64-build/Frameworks universal-build/
+          if [ -d "arm64-build/Frameworks" ] && [ "$(ls -A arm64-build/Frameworks)" ]; then
+            echo "Copying frameworks from ARM64 build..."
+            cp -R arm64-build/Frameworks/* universal-build/Frameworks/
+          elif [ -d "x86_64-build/Frameworks" ] && [ "$(ls -A x86_64-build/Frameworks)" ]; then
+            echo "Copying frameworks from x86_64 build..."
+            cp -R x86_64-build/Frameworks/* universal-build/Frameworks/
+          else
+            echo "No frameworks found in either build"
           fi
       
       - name: Create README for universal binary
@@ -180,10 +238,15 @@ jobs:
           ## Usage
           
           ```bash
-          ./idb_companion --help
+          ./bin/idb_companion --help
           ```
           
           The binary will automatically run the correct architecture for your system.
+          
+          ## Structure
+          
+          - `bin/idb_companion` - Universal companion executable
+          - `Frameworks/` - Required frameworks (if any)
           
           ## Version
           
@@ -233,15 +296,23 @@ jobs:
           
           1. Download `idb-companion-universal-macos.tar.gz`
           2. Extract: `tar -xzf idb-companion-universal-macos.tar.gz`
-          3. Make executable: `chmod +x idb_companion`
-          4. Move to your IDB installation: `mv idb_companion /path/to/idb/bin/`
+          3. Make executable: `chmod +x bin/idb_companion`
+          4. Replace your existing companion:
+             ```bash
+             cp bin/idb_companion /path/to/your/idb/bin/idb_companion
+             ```
+          5. Verify it's universal:
+             ```bash
+             lipo -info /path/to/your/idb/bin/idb_companion
+             # Should show: "Architectures in the fat file: ... are: x86_64 arm64"
+             ```
           
           ### Using Architecture-Specific Binary
           
           1. Download the appropriate binary for your system
           2. Extract: `tar -xzf idb-companion-[arch]-macos.tar.gz`
           3. Navigate into the directory: `cd idb-companion-[arch]`
-          4. Make executable: `chmod +x idb_companion`
+          4. Make executable: `chmod +x bin/idb_companion`
           5. Move to your IDB installation
           
           ## Usage
@@ -250,13 +321,25 @@ jobs:
           
           Manual usage:
           ```bash
-          ./idb_companion --help
+          ./bin/idb_companion --help
           ```
           
           ## System Requirements
           
           - macOS 13.0 or later
           - Xcode Command Line Tools (for some features)
+          
+          ## Code Signing
+          
+          These binaries are unsigned. If you're distributing an app with IDB Companion:
+          
+          1. Sign the binary with your Developer ID:
+             ```bash
+             codesign --force --sign "Developer ID Application: Your Name (TEAM_ID)" \
+               --options runtime --timestamp bin/idb_companion
+             ```
+          
+          2. Sign any frameworks in the Frameworks directory
           
           ## Testing
           
