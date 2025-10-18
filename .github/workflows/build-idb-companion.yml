@@ -40,9 +40,30 @@ jobs:
           xcodebuild -version
           echo "Building for architecture: ${{ matrix.arch }}"
       
+      - name: Install build dependencies
+        run: |
+          # Install CocoaPods
+          gem install cocoapods
+          
+          # Install grpc and protoc (needed for building)
+          brew tap grpc/grpc
+          brew install grpc
+          
+          # Verify installations
+          which protoc
+          protoc --version
+      
       - name: Install CocoaPods dependencies
         run: |
-          gem install cocoapods
+          # Check if Podfile exists
+          if [ ! -f "Podfile" ]; then
+            echo "ERROR: Podfile not found in $(pwd)"
+            echo "Directory contents:"
+            ls -la
+            exit 1
+          fi
+          
+          # Install pod dependencies
           pod install
       
       - name: Build IDB Frameworks
