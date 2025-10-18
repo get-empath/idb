@@ -70,22 +70,123 @@ jobs:
             echo "Patch applied successfully"
           else
             echo "Warning: FBArchiveOperations.h not found, skipping patch"
-          fi    
+          fi
+          
+          echo "Pinning grpc-swift to a working version..."
+          # Pin grpc-swift to version 1.15.0 which doesn't have Swift 6 concurrency issues
+          if [ -f "Package.swift" ]; then
+            # Modify Package.swift to use a specific version
+            sed -i.bak 's/.package(url: "https:\/\/github.com\/grpc\/grpc-swift.git", from: "[^"]*")/.package(url: "https:\/\/github.com\/grpc\/grpc-swift.git", exact: "1.15.0")/' Package.swift
+            echo "grpc-swift pinned to 1.15.0"
+          fi
       
       - name: Build IDB Companion using idb_build.sh
         run: |
           echo "Building IDB Companion with idb_build.sh..."
           
-          # First build attempt - may fail but generates some needed files
+          # First build attempt - will download dependencies and may fail
           ./idb_build.sh idb_companion build "$(pwd)/companion_output" || true
           
-          # Second build should succeed with all headers in place
+          # Now patch grpc-swift if it was downloaded
+          GRPC_DIR=$(find build/SourcePackages/checkouts -name "grpc-swift" -type d 2>/dev/null | head -1)
+          if [ -n "$GRPC_DIR" ]; then
+            echo "Found grpc-swift at: $GRPC_DIR"
+            CONFIGURATOR_FILE="$GRPC_DIR/Sources/GRPC/GRPCServerPipelineConfigurator.swift"
+            
+            if [ -f "$CONFIGURATOR_FILE" ]; then
+              echo "Patching GRPCServerPipelineConfigurator.swift for Swift 6 concurrency..."
+              
+              # Create a backup
+              cp "$CONFIGURATOR_FILE" "$CONFIGURATOR_FILE.bak"
+              
+              # Create the patched version
+              cat > "$CONFIGURATOR_FILE" << 'EOFPATCH'
+import NIOHPACK
+import NIOCore
+import NIOHTTP2
+import Logging
+
+public struct GRPCServerPipelineConfigurator {
+  private let servicesByName: [Substring: CallHandlerProvider]
+  private var logger: Logger
+  private let errorDelegate: ServerErrorDelegate?
+  private let normalizeHeaders: Bool
+  private let maximumReceiveMessageLength: Int
+  private let encoding: ServerMessageEncoding
+
+  public init(
+    serviceProviders: [CallHandlerProvider],
+    logger: Logger,
+    errorDelegate: ServerErrorDelegate?,
+    normalizeHeaders: Bool,
+    maximumReceiveMessageLength: Int,
+    encoding: ServerMessageEncoding
+  ) {
+    var servicesByName: [Substring: CallHandlerProvider] = [:]
+    for provider in serviceProviders {
+      servicesByName[provider.serviceName[...]] = provider
+    }
+    
+    self.servicesByName = servicesByName
+    self.logger = logger
+    self.errorDelegate = errorDelegate
+    self.normalizeHeaders = normalizeHeaders
+    self.maximumReceiveMessageLength = maximumReceiveMessageLength
+    self.encoding = encoding
+  }
+
+  public func configureGRPCPipeline(
+    channel: Channel,
+    streamID: HTTP2StreamID
+  ) -> EventLoopFuture<Void> {
+    // Create a local mutable copy of logger for this stream to avoid concurrency issues
+    var streamLogger = self.logger
+    streamLogger[metadataKey: MetadataKey.h2StreamID] = "\(streamID)"
+
+    return channel.eventLoop.flatSubmit {
+      channel.pipeline.addHandlers([
+        self.makeHTTP2ToRawGRPCHandler(normalizeHeaders: self.normalizeHeaders, logger: streamLogger),
+        self.makeRequestRoutingHandler(logger: streamLogger)
+      ])
+    }
+  }
+
+  private func makeHTTP2ToRawGRPCHandler(
+    normalizeHeaders: Bool,
+    logger: Logger
+  ) -> HTTP2ToRawGRPCServerCodec {
+    return HTTP2ToRawGRPCServerCodec(
+      normalizeHTTPHeaders: normalizeHeaders,
+      maximumReceiveMessageLength: self.maximumReceiveMessageLength,
+      logger: logger
+    )
+  }
+
+  private func makeRequestRoutingHandler(
+    logger: Logger
+  ) -> GRPCServerRequestRoutingHandler {
+    return GRPCServerRequestRoutingHandler(
+      servicesByName: self.servicesByName,
+      encoding: self.encoding,
+      errorDelegate: self.errorDelegate,
+      logger: logger
+    )
+  }
+}
+EOFPATCH
+              
+              echo "Patch applied successfully to GRPCServerPipelineConfigurator.swift"
+            fi
+          fi
+          
+          # Second build should succeed with patched grpc-swift
           ./idb_build.sh idb_companion build "$(pwd)/companion_output"
           
           echo "Build complete. Searching for companion binary..."
           find . -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | head -5
         env:
           SWIFT_STRICT_CONCURRENCY: minimal
+          SWIFT_CONCURRENCY_CHECKING: minimal
       
       - name: Locate and verify companion binary
         run: |
