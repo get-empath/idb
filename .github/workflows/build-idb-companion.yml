@@ -77,17 +77,94 @@ jobs:
       
       - name: Pre-build FBSimulatorControl framework
         run: |
-          echo "Pre-building FBSimulatorControl to generate headers..."
-          ./idb_build.sh fbsimulatorcontrol build "$(pwd)/frameworks_build" || {
-            echo "FBSimulatorControl pre-build completed with warnings, continuing..."
-          }
+          echo "Building FBSimulatorControl framework separately for ${{ matrix.arch }}..."
+          
+          # Build FBSimulatorControl with explicit architecture
+          xcodebuild build \
+            -project FBSimulatorControl.xcodeproj \
+            -scheme FBSimulatorControl \
+            -configuration Release \
+            -arch ${{ matrix.arch }} \
+            ONLY_ACTIVE_ARCH=YES \
+            BUILD_DIR="$(pwd)/build/Build" \
+            OBJROOT="$(pwd)/build/Build/Intermediates.noindex" \
+            SYMROOT="$(pwd)/build/Build" || {
+              echo "FBSimulatorControl build failed, but continuing..."
+            }
+          
+          echo "Checking FBSimulatorControl framework structure..."
+          if [ -d "build/Build/Products/Release/FBSimulatorControl.framework" ]; then
+            echo "Framework exists, checking headers..."
+            ls -la build/Build/Products/Release/FBSimulatorControl.framework/Headers/ || true
+            
+            # Count headers
+            HEADER_COUNT=$(find build/Build/Products/Release/FBSimulatorControl.framework/Headers/ -name "*.h" 2>/dev/null | wc -l)
+            echo "Found $HEADER_COUNT header files"
+            
+            # Check for the specific missing header
+            if [ ! -f "build/Build/Products/Release/FBSimulatorControl.framework/Headers/FBSimulatorApplicationCommands.h" ]; then
+              echo "WARNING: FBSimulatorApplicationCommands.h is missing!"
+              echo "Searching for this file in source..."
+              find FBSimulatorControl -name "FBSimulatorApplicationCommands.h" 2>/dev/null || true
+              
+              # Manually copy all headers if build didn't install them properly
+              echo "Manually copying all public headers..."
+              find FBSimulatorControl -name "*.h" -type f -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
+              
+              echo "Headers after manual copy:"
+              ls -la build/Build/Products/Release/FBSimulatorControl.framework/Headers/ | wc -l
+            fi
+          else
+            echo "FBSimulatorControl framework not found at expected location"
+          fi
       
       - name: Build IDB Companion using idb_build.sh
         run: |
           echo "Building IDB Companion with idb_build.sh..."
           
+          # Set architecture-specific build settings
+          export ARCHS="${{ matrix.arch }}"
+          export ONLY_ACTIVE_ARCH=YES
+          
+          echo "Building for architecture: ${{ matrix.arch }}"
+          
           # First build attempt to generate dependencies
-          ./idb_build.sh idb_companion build "$(pwd)/companion_output" || true
+          ./idb_build.sh idb_companion build "$(pwd)/companion_output" || {
+            echo "First build attempt failed, attempting to fix FBSimulatorControl headers..."
+            
+            # Check what headers exist in the framework
+            if [ -d "build/Build/Products/Release/FBSimulatorControl.framework/Headers" ]; then
+              echo "Current headers in framework:"
+              ls -la build/Build/Products/Release/FBSimulatorControl.framework/Headers/
+              
+              # Find and copy missing headers from source
+              echo "Copying missing headers from source..."
+              if [ -d "FBSimulatorControl/Commands" ]; then
+                find FBSimulatorControl/Commands -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
+              fi
+              
+              if [ -d "FBSimulatorControl/Management" ]; then
+                find FBSimulatorControl/Management -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
+              fi
+              
+              if [ -d "FBSimulatorControl/Utility" ]; then
+                find FBSimulatorControl/Utility -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
+              fi
+              
+              if [ -d "FBSimulatorControl/Strategies" ]; then
+                find FBSimulatorControl/Strategies -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
+              fi
+              
+              if [ -d "FBSimulatorControl/Configuration" ]; then
+                find FBSimulatorControl/Configuration -name "*.h" -exec cp {} build/Build/Products/Release/FBSimulatorControl.framework/Headers/ \; 2>/dev/null || true
+              fi
+              
+              echo "Headers after copying:"
+              ls -la build/Build/Products/Release/FBSimulatorControl.framework/Headers/ | wc -l
+            fi
+            
+            echo "Retrying build after header fix..."
+          }
           
           # Make the entire build directory writable for patching
           if [ -d "build/SourcePackages/checkouts" ]; then
