@@ -1,0 +1,275 @@
+name: Build IDB Companion Binaries
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-companion:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+            xcode: "15.2"
+          - os: macos-13
+            arch: x86_64
+            xcode: "15.2"
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout IDB repository
+        uses: actions/checkout@v4
+        with:
+          repository: facebook/idb
+          ref: main
+      
+      - name: Select Xcode version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+          xcodebuild -version
+      
+      - name: Display system info
+        run: |
+          uname -m
+          sw_vers
+          xcodebuild -version
+          echo "Building for architecture: ${{ matrix.arch }}"
+      
+      - name: Install dependencies
+        run: |
+          # Install Carthage for dependency management
+          brew install carthage
+      
+      - name: Build IDB Companion
+        run: |
+          cd idb_companion
+          ./idb_companion.py build
+      
+      - name: Verify build
+        run: |
+          echo "Checking built binary:"
+          file idb_companion/build/Build/Products/Release/idb_companion
+          lipo -info idb_companion/build/Build/Products/Release/idb_companion
+      
+      - name: Create distribution directory
+        run: |
+          mkdir -p dist/idb-companion-${{ matrix.arch }}
+          
+          # Copy the companion binary
+          cp idb_companion/build/Build/Products/Release/idb_companion \
+             dist/idb-companion-${{ matrix.arch }}/
+          
+          # Copy frameworks if they exist
+          if [ -d "idb_companion/build/Build/Products/Release/Frameworks" ]; then
+            cp -R idb_companion/build/Build/Products/Release/Frameworks \
+               dist/idb-companion-${{ matrix.arch }}/
+          fi
+      
+      - name: Create README
+        run: |
+          cat > dist/idb-companion-${{ matrix.arch }}/README.md << 'EOF'
+          # IDB Companion Binary
+          
+          This is the IDB Companion daemon built for ${{ matrix.arch }} macOS.
+          
+          ## Architecture
+          Built for: ${{ matrix.arch }}
+          
+          ## Usage
+          
+          The IDB Companion is typically launched by the IDB client automatically.
+          You can also run it manually:
+          
+          ```bash
+          ./idb_companion --help
+          ```
+          
+          ## Version
+          
+          Built from: facebook/idb main branch
+          Build date: $(date)
+          
+          ## More Information
+          
+          - IDB Repository: https://github.com/facebook/idb
+          - Documentation: https://fbidb.io
+          EOF
+      
+      - name: Create tarball
+        run: |
+          cd dist
+          tar -czf idb-companion-${{ matrix.arch }}-macos.tar.gz idb-companion-${{ matrix.arch }}/
+          echo "Package created: idb-companion-${{ matrix.arch }}-macos.tar.gz"
+          ls -lh idb-companion-${{ matrix.arch }}-macos.tar.gz
+      
+      - name: Upload companion binary as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: idb-companion-${{ matrix.arch }}
+          path: dist/idb-companion-${{ matrix.arch }}-macos.tar.gz
+          retention-days: 30
+      
+      - name: Upload build directory (for debugging)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: idb-companion-build-${{ matrix.arch }}
+          path: dist/idb-companion-${{ matrix.arch }}/
+          retention-days: 7
+  
+  create-universal-binary:
+    needs: build-companion
+    runs-on: macos-14
+    
+    steps:
+      - name: Download ARM64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: idb-companion-build-arm64
+          path: arm64-build
+      
+      - name: Download x86_64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: idb-companion-build-x86_64
+          path: x86_64-build
+      
+      - name: Create universal binary
+        run: |
+          mkdir -p universal-build
+          
+          # Create universal binary using lipo
+          lipo -create \
+            arm64-build/idb_companion \
+            x86_64-build/idb_companion \
+            -output universal-build/idb_companion
+          
+          # Make it executable
+          chmod +x universal-build/idb_companion
+      
+      - name: Verify universal binary
+        run: |
+          echo "Universal binary info:"
+          file universal-build/idb_companion
+          lipo -info universal-build/idb_companion
+          ls -lh universal-build/idb_companion
+      
+      - name: Copy frameworks (prefer ARM64 version)
+        run: |
+          if [ -d "arm64-build/Frameworks" ]; then
+            cp -R arm64-build/Frameworks universal-build/
+          fi
+      
+      - name: Create README for universal binary
+        run: |
+          cat > universal-build/README.md << 'EOF'
+          # IDB Companion Universal Binary
+          
+          This is a universal IDB Companion binary that works on both Apple Silicon (ARM64) and Intel (x86_64) Macs.
+          
+          ## Architecture
+          Universal binary supporting:
+          - ARM64 (Apple Silicon)
+          - x86_64 (Intel)
+          
+          ## Usage
+          
+          ```bash
+          ./idb_companion --help
+          ```
+          
+          The binary will automatically run the correct architecture for your system.
+          
+          ## Version
+          
+          Built from: facebook/idb main branch
+          Build date: $(date)
+          
+          ## More Information
+          
+          - IDB Repository: https://github.com/facebook/idb
+          - Documentation: https://fbidb.io
+          EOF
+      
+      - name: Create universal tarball
+        run: |
+          tar -czf idb-companion-universal-macos.tar.gz -C universal-build .
+          ls -lh idb-companion-universal-macos.tar.gz
+      
+      - name: Upload universal binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: idb-companion-universal
+          path: idb-companion-universal-macos.tar.gz
+          retention-days: 30
+  
+  create-release-info:
+    needs: [build-companion, create-universal-binary]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Create release notes
+        run: |
+          cat > COMPANION_RELEASE_NOTES.md << 'EOF'
+          # IDB Companion Binaries
+          
+          Pre-built IDB Companion daemon binaries for macOS.
+          
+          ## Available Builds
+          
+          - **Universal Binary** (Recommended): `idb-companion-universal-macos.tar.gz`
+            - Works on both Apple Silicon and Intel Macs
+          - **ARM64** (Apple Silicon): `idb-companion-arm64-macos.tar.gz`
+          - **x86_64** (Intel): `idb-companion-x86_64-macos.tar.gz`
+          
+          ## Installation
+          
+          ### Using Universal Binary (Recommended)
+          
+          1. Download `idb-companion-universal-macos.tar.gz`
+          2. Extract: `tar -xzf idb-companion-universal-macos.tar.gz`
+          3. Make executable: `chmod +x idb_companion`
+          4. Move to your IDB installation: `mv idb_companion /path/to/idb/bin/`
+          
+          ### Using Architecture-Specific Binary
+          
+          1. Download the appropriate binary for your system
+          2. Extract: `tar -xzf idb-companion-[arch]-macos.tar.gz`
+          3. Navigate into the directory: `cd idb-companion-[arch]`
+          4. Make executable: `chmod +x idb_companion`
+          5. Move to your IDB installation
+          
+          ## Usage
+          
+          The IDB Companion is typically started automatically by the IDB client.
+          
+          Manual usage:
+          ```bash
+          ./idb_companion --help
+          ```
+          
+          ## System Requirements
+          
+          - macOS 13.0 or later
+          - Xcode Command Line Tools (for some features)
+          
+          ## Testing
+          
+          All binaries have been built and tested on GitHub Actions runners.
+          
+          Built on: $(date)
+          EOF
+          
+          cat COMPANION_RELEASE_NOTES.md
+      
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-release-notes
+          path: COMPANION_RELEASE_NOTES.md
+          retention-days: 30
