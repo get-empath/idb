@@ -59,6 +59,18 @@ jobs:
           # Verify installations
           which protoc
           protoc --version
+
+      - name: Fix documentation warnings in IDB source
+        run: |
+          echo "Patching FBArchiveOperations.h to fix documentation warnings..."
+          # Remove the problematic @param documentation
+          if [ -f "FBControlCore/Utility/FBArchiveOperations.h" ]; then
+            sed -i.bak '/^[[:space:]]*@param queue the queue to do work on/d' \
+              FBControlCore/Utility/FBArchiveOperations.h
+            echo "Patch applied successfully"
+          else
+            echo "Warning: FBArchiveOperations.h not found, skipping patch"
+          fi    
       
       - name: Build IDB Companion using idb_build.sh
         run: |
