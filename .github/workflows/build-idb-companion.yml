@@ -67,12 +67,32 @@ jobs:
           else
             echo "Warning: FBArchiveOperations.h not found, skipping patch"
           fi
+          
+          echo "Fixing FBSimulatorControl header issues..."
+          # Ensure all FBSimulatorControl headers exist
+          if [ -d "FBSimulatorControl" ]; then
+            echo "FBSimulatorControl directory found"
+            ls -la FBSimulatorControl/ || true
+          fi
+      
+      - name: Pre-build FBSimulatorControl framework
+        run: |
+          echo "Pre-building FBSimulatorControl to generate headers..."
+          ./idb_build.sh fbsimulatorcontrol build "$(pwd)/frameworks_build" || {
+            echo "FBSimulatorControl pre-build completed with warnings, continuing..."
+          }
       
       - name: Build IDB Companion using idb_build.sh
         run: |
           echo "Building IDB Companion with idb_build.sh..."
           
+          # First build attempt to generate dependencies
           ./idb_build.sh idb_companion build "$(pwd)/companion_output" || true
+          
+          # Make the entire build directory writable for patching
+          if [ -d "build/SourcePackages/checkouts" ]; then
+            chmod -R +w build/SourcePackages/checkouts/ || true
+          fi
           
           GRPC_DIR=$(find build/SourcePackages/checkouts -name "grpc-swift" -type d 2>/dev/null | head -1)
           if [ -n "$GRPC_DIR" ]; then
@@ -81,7 +101,16 @@ jobs:
             
             if [ -f "$CONFIGURATOR_FILE" ]; then
               echo "Patching GRPCServerPipelineConfigurator.swift for Swift 6 concurrency..."
-              cp "$CONFIGURATOR_FILE" "$CONFIGURATOR_FILE.bak"
+              
+              # Ensure file is writable
+              chmod +w "$CONFIGURATOR_FILE" || {
+                echo "Warning: Could not make file writable, attempting patch anyway..."
+              }
+              
+              # Backup original
+              cp "$CONFIGURATOR_FILE" "$CONFIGURATOR_FILE.bak" || {
+                echo "Warning: Could not create backup"
+              }
               
               cat > "$CONFIGURATOR_FILE" << 'ENDPATCH'
           import NIOHPACK
@@ -158,10 +187,19 @@ jobs:
           ENDPATCH
               
               echo "Patch applied successfully to GRPCServerPipelineConfigurator.swift"
+            else
+              echo "Warning: GRPCServerPipelineConfigurator.swift not found at expected location"
             fi
+          else
+            echo "Warning: grpc-swift directory not found, skipping patch"
           fi
           
-          ./idb_build.sh idb_companion build "$(pwd)/companion_output"
+          echo "Starting final build of IDB Companion..."
+          ./idb_build.sh idb_companion build "$(pwd)/companion_output" || {
+            echo "Build failed. Checking for partial build artifacts..."
+            find . -name "idb_companion" -type f 2>/dev/null | head -10
+            exit 1
+          }
           
           echo "Build complete. Searching for companion binary..."
           find . -name "idb_companion" -type f 2>/dev/null | grep -v ".build" | head -5
